@@ -1,97 +1,119 @@
 "use client";
-import { useState } from "react";
-import FilaAlumno from "./components/FilaAlumno";
+import { useEffect, useMemo, useState } from "react";
+import type { Alumno, FiltroEstado } from "./types";
+import { ALUMNOS_INICIALES } from "./data/alumnos";
+import { idVisible } from "./utils/alumnos";
+import EncabezadoPagina from "./components/EncabezadoPagina";
+import TarjetasResumen from "./components/TarjetasResumen";
+import BarraHerramientas from "./components/BarraHerramientas";
+import TablaAlumnos from "./components/TablaAlumnos";
+import Paginacion from "./components/Paginacion";
+import ModalAlumno from "./components/ModalAlumno";
+
+const POR_PAGINA = 5;
 
 export default function Home() {
-  const [mensaje, setMensaje] = useState("");
+  const [alumnos, setAlumnos] = useState<Alumno[]>(ALUMNOS_INICIALES);
 
-  const [alumnos, setAlumnos] = useState([
-    { nombre: "Mayela Mayte", apellido: "Lopez Cerino", carrera: "LCC" },
-    { nombre: "Andrea Sofia", apellido: "Lopez Cerino", carrera: "LMAD" },
-    { nombre: "Regina Dariela", apellido: "Sosa Huerta", carrera: "LSTI" },
-  ]);
+  const [busqueda, setBusqueda] = useState("");
+  const [filtroEstado, setFiltroEstado] = useState<FiltroEstado>("todos");
+  const [mostrarCalificaciones, setMostrarCalificaciones] = useState(false);
+  const [pagina, setPagina] = useState(1);
+  const [menuAbierto, setMenuAbierto] = useState<number | null>(null);
+  const [modalAbierto, setModalAbierto] = useState(false);
 
-  const [nombre, setNombre] = useState("");
-  const [apellido, setApellido] = useState("");
-  const [carrera, setCarrera] = useState("");
+  useEffect(() => {
+    const cerrarMenu = () => setMenuAbierto(null);
+    document.addEventListener("click", cerrarMenu);
+    return () => document.removeEventListener("click", cerrarMenu);
+  }, []);
 
-  const agregarAlumno = (e) => {
-    e.preventDefault();
+  const filtrados = useMemo(() => {
+    const q = busqueda.trim().toLowerCase();
+    return alumnos.filter((a) => {
+      const coincideEstado =
+          filtroEstado === "todos" || (filtroEstado === "activo" ? a.activo : !a.activo);
+      const coincideTexto =
+          !q ||
+          [a.nombre, a.correo, a.carrera, idVisible(a), `${a.semestre}`]
+              .join(" ")
+              .toLowerCase()
+              .includes(q);
+      return coincideEstado && coincideTexto;
+    });
+  }, [alumnos, busqueda, filtroEstado]);
 
-    if (!nombre.trim() || !apellido.trim() || !carrera.trim()) {
-      setMensaje("Por favor llena todos los campos.");
-      return;
-    }
+  const totalPaginas = Math.max(1, Math.ceil(filtrados.length / POR_PAGINA));
+  const paginaActual = Math.min(pagina, totalPaginas);
+  const inicio = (paginaActual - 1) * POR_PAGINA;
+  const visibles = filtrados.slice(inicio, inicio + POR_PAGINA);
 
-    const nuevoAlumno = {
-      nombre: nombre.trim(),
-      apellido: apellido.trim(),
-      carrera: carrera.trim(),
-    };
+  const cambiarBusqueda = (valor: string) => {
+    setBusqueda(valor);
+    setPagina(1);
+  };
 
-    setAlumnos([...alumnos, nuevoAlumno]);
+  const cambiarFiltro = (valor: FiltroEstado) => {
+    setFiltroEstado(valor);
+    setPagina(1);
+  };
 
-    setNombre("");
-    setApellido("");
-    setCarrera("");
-    setMensaje("Alumno agregado correctamente.");
+  const cambiarEstado = (id: number) => {
+    setAlumnos(alumnos.map((a) => (a.id === id ? { ...a, activo: !a.activo } : a)));
+    setMenuAbierto(null);
+  };
+
+  const cambiarCalificacion = (id: number, calificacion: number) => {
+    setAlumnos(alumnos.map((a) => (a.id === id ? { ...a, promedio: calificacion } : a)));
+  };
+
+  const eliminar = (id: number) => {
+    setAlumnos(alumnos.filter((a) => a.id !== id));
+    setMenuAbierto(null);
+  };
+
+  const agregarAlumno = (datos: Omit<Alumno, "id">) => {
+    const nuevoId = Math.max(0, ...alumnos.map((a) => a.id)) + 1;
+    setAlumnos([...alumnos, { ...datos, id: nuevoId }]);
+    setModalAbierto(false);
   };
 
   return (
-      <div>
-        <h1>Alumnos</h1>
+      <main className="mx-auto w-full max-w-5xl p-6">
+        <EncabezadoPagina onAgregar={() => setModalAbierto(true)} />
+        <TarjetasResumen alumnos={alumnos} />
 
-        <section>
-          <h2>Agregar alumno</h2>
-
-          <form onSubmit={agregarAlumno}>
-            <label htmlFor="nombre">Nombre del alumno: </label>
-            <input
-                id="nombre"
-                value={nombre}
-                onChange={(e) => setNombre(e.target.value)}
-            />
-
-            <label htmlFor="apellido">Apellido del alumno: </label>
-            <input
-                id="apellido"
-                value={apellido}
-                onChange={(e) => setApellido(e.target.value)}
-            />
-
-            <label htmlFor="carrera">Carrera del alumno: </label>
-            <input
-                id="carrera"
-                value={carrera}
-                onChange={(e) => setCarrera(e.target.value)}
-            />
-
-            <button type="submit">Agregar</button>
-          </form>
-
-          {mensaje && <p>{mensaje}</p>}
+        <section className="mt-6 rounded-3xl border border-slate-200 bg-white">
+          <BarraHerramientas
+              busqueda={busqueda}
+              onBusqueda={cambiarBusqueda}
+              mostrarCalificaciones={mostrarCalificaciones}
+              onToggleCalificaciones={() => setMostrarCalificaciones(!mostrarCalificaciones)}
+              filtroEstado={filtroEstado}
+              onFiltroEstado={cambiarFiltro}
+          />
+          <TablaAlumnos
+              alumnos={visibles}
+              mostrarCalificaciones={mostrarCalificaciones}
+              menuAbierto={menuAbierto}
+              onToggleMenu={(id) => setMenuAbierto(menuAbierto === id ? null : id)}
+              onCambiarEstado={cambiarEstado}
+              onCambiarCalificacion={cambiarCalificacion}
+              onEliminar={eliminar}
+          />
+          <Paginacion
+              inicio={inicio}
+              mostrados={visibles.length}
+              total={filtrados.length}
+              paginaActual={paginaActual}
+              totalPaginas={totalPaginas}
+              onCambiarPagina={setPagina}
+          />
         </section>
 
-        <table>
-          <thead>
-          <tr>
-            <th>Nombre</th>
-            <th>Apellido</th>
-            <th>Carrera</th>
-          </tr>
-          </thead>
-
-          <tbody>
-          {alumnos.map((alumno, index) => (
-              <FilaAlumno
-                  key={index}
-                  nombre={alumno.nombre}
-                  apellido={alumno.apellido}
-                  carrera={alumno.carrera}
-              />
-          ))}
-          </tbody>
-        </table>
-      </div>
+        {modalAbierto && (
+            <ModalAlumno onCerrar={() => setModalAbierto(false)} onGuardar={agregarAlumno} />
+        )}
+      </main>
   );
 }
